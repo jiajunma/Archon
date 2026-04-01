@@ -1,5 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLogs } from '../hooks/useApi';
+import { useLogDeepLink } from '../hooks/useLogDeepLink';
 import { useLogStream } from '../hooks/useLogStream';
 import type { LogEntry, LogGroup } from '../types';
 import { fmtDuration } from '../utils/format';
@@ -141,9 +143,51 @@ function RunSummaryBar({ entries }: { entries: LogEntry[] }) {
 export default function LogViewer() {
   const [selectedFile, setSelectedFile] = useState('');
   const [filter, setFilter] = useState('all');
+  const navigate = useNavigate();
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   const { data: logsData } = useLogs();
+  const { initialSelectedFile, initialHighlightTs, backTarget } = useLogDeepLink(logsData);
   const { entries, streaming } = useLogStream(selectedFile);
+  const highlightConsumedRef = useRef(false);
+
+  const goBackToDiffs = () => {
+    if (!backTarget) return;
+    navigate(`${backTarget.pathname}${backTarget.search || ''}`);
+  };
+
+  // Consume deep-link once on first load
+  useEffect(() => {
+    if (!selectedFile && initialSelectedFile) {
+      setSelectedFile(initialSelectedFile);
+    }
+  }, [selectedFile, initialSelectedFile]);
+
+  // Scroll to highlighted timestamp only once, on the initial deep-linked file
+  useEffect(() => {
+    if (highlightConsumedRef.current) return;
+    if (!selectedFile || !initialSelectedFile || selectedFile !== initialSelectedFile) return;
+    if (highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      highlightConsumedRef.current = true;
+    }
+  }, [selectedFile, initialSelectedFile, entries]);
+
+  // Pre-compute closest entry ts only for the initial deep-linked file
+  const closestHighlightTs = useMemo(() => {
+    if (selectedFile !== initialSelectedFile) return '';
+    if (!initialHighlightTs || entries.length === 0) return '';
+    const targetTime = new Date(initialHighlightTs).getTime();
+    if (isNaN(targetTime)) return '';
+    let minDist = Infinity;
+    let bestTs = '';
+    for (const e of entries) {
+      if (!e.ts || e.event === 'session_end') continue;
+      const dist = Math.abs(new Date(e.ts).getTime() - targetTime);
+      if (dist < minDist) { minDist = dist; bestTs = e.ts; }
+    }
+    return bestTs;
+  }, [entries, initialHighlightTs]);
 
   // Derive the role of the selected file
   const selectedRole = useMemo(() => {
@@ -155,15 +199,15 @@ export default function LogViewer() {
     return '';
   }, [logsData, selectedFile]);
 
-  // Auto-select first file
+  // Auto-select first file only if deep-link didn't choose one
   useEffect(() => {
-    if (!logsData || selectedFile) return;
+    if (!logsData || selectedFile || initialSelectedFile) return;
     if (logsData.groups.length > 0) {
       const lastGroup = logsData.groups[logsData.groups.length - 1];
       if (lastGroup.files.length > 0) { setSelectedFile(lastGroup.files[0].path); return; }
     }
     if (logsData.flat.length > 0) setSelectedFile(logsData.flat[0].path);
-  }, [logsData, selectedFile]);
+  }, [logsData, selectedFile, initialSelectedFile]);
 
   // Filtered entries
   const filtered = useMemo(() => {
@@ -211,6 +255,11 @@ export default function LogViewer() {
       {/* Main content */}
       <div className={styles.main}>
         <div className={styles.toolbar}>
+          {backTarget && (
+            <button className={styles.backBtn} onClick={goBackToDiffs} title="Back to Diffs view">
+              ← Diffs
+            </button>
+          )}
           {selectedRole && (
             <span className={styles.roleTag} style={{ color: ROLE_COLORS[selectedRole] || 'var(--text-muted)' }}>
               {selectedRole}
@@ -242,9 +291,21 @@ export default function LogViewer() {
           )}
 
           {/* All entries, newest first */}
-          {filtered.filter(e => e.event !== 'session_end').slice().reverse().map((e, i) => (
-            <LogEntryLine key={`${entries.length}-${i}`} entry={e} />
-          ))}
+          {(() => {
+            let highlightAttached = false;
+            return filtered.filter(e => e.event !== 'session_end').slice().reverse().map((e, i) => {
+              const isHighlighted = !!(closestHighlightTs && e.ts === closestHighlightTs);
+              const attachRef = isHighlighted && !highlightAttached;
+              if (attachRef) highlightAttached = true;
+              return (
+                <div key={e.ts ? `${e.ts}-${e.event}-${i}` : `entry-${i}`}
+                     ref={attachRef ? highlightRef : undefined}
+                     style={isHighlighted ? { background: 'rgba(3,102,214,0.08)', borderLeft: '3px solid var(--blue)' } : undefined}>
+                  <LogEntryLine entry={e} />
+                </div>
+              );
+            });
+          })()}
 
           {entries.length === 0 && selectedFile && (
             <div className={styles.emptyContent}>No entries in this log file yet.</div>
