@@ -24,6 +24,7 @@ export function useDiffUrlState() {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [viewMode, setViewMode] = useState<DiffViewMode>(initial.view);
   const initialConsumedRef = useRef(false);
+  const pendingLatestSelectionRef = useRef(false);
 
   const syncUrl = useCallback((slug: string, entry?: Pick<TimelineEntry, 'iteration' | 'step'>, view?: DiffViewMode) => {
     const params = new URLSearchParams();
@@ -37,19 +38,23 @@ export function useDiffUrlState() {
   }, [setSearchParams]);
 
   const resolveInitialPosition = useCallback((timeline: TimelineEntry[]) => {
+    if (pendingLatestSelectionRef.current) {
+      pendingLatestSelectionRef.current = false;
+      return Math.max(timeline.length - 1, 0);
+    }
     if (initialConsumedRef.current) return null;
     initialConsumedRef.current = true;
     if (initial.iter && initial.step) {
       const idx = timeline.findIndex(e => e.iteration === initial.iter && e.step === parseInt(initial.step, 10));
       if (idx >= 0) return idx;
     }
-    return 0;
+    return Math.max(timeline.length - 1, 0);
   }, [initial]);
 
   const selectFile = useCallback((slug: string) => {
     initialConsumedRef.current = true;
+    pendingLatestSelectionRef.current = true;
     setSelectedSlug(slug);
-    setCurrentIdx(0);
   }, []);
 
   useEffect(() => {

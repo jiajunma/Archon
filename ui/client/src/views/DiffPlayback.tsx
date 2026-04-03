@@ -10,7 +10,7 @@
  *     - Content: DiffView or full file source view
  *   Right sidebar: structure index for long diff / file navigation
  */
-import { useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSnapshotFiles, useFileTimeline, useSnapshotFileContent } from '../hooks/useSnapshots';
 import { useDiffUrlState } from '../hooks/useDiffUrlState';
@@ -25,6 +25,66 @@ import type { FileSnapshotSummary } from '../types';
 
 function formatSlug(slug?: string) {
   return slug ? slug.replace(/_/g, '/') : '';
+}
+
+type FileTreeNode = {
+  name: string;
+  path: string;
+  children: FileTreeNode[];
+  file?: FileSnapshotSummary;
+};
+
+function getFilePath(summary: FileSnapshotSummary) {
+  return summary.file ?? formatSlug(summary.slug);
+}
+
+function buildFileTree(files: FileSnapshotSummary[]): FileTreeNode[] {
+  const root: FileTreeNode = { name: '', path: '', children: [] };
+
+  for (const file of files) {
+    const filePath = getFilePath(file);
+    const parts = filePath.split('/').filter(Boolean);
+    let current = root;
+    let currentPath = '';
+
+    parts.forEach((part, idx) => {
+      currentPath = currentPath ? `${currentPath}/${part}` : part;
+      let child = current.children.find(node => node.name === part);
+      if (!child) {
+        child = { name: part, path: currentPath, children: [] };
+        current.children.push(child);
+      }
+      if (idx === parts.length - 1) child.file = file;
+      current = child;
+    });
+  }
+
+  const sortNodes = (nodes: FileTreeNode[]) => {
+    nodes.sort((a, b) => {
+      const aIsDir = !a.file;
+      const bIsDir = !b.file;
+      if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    nodes.forEach(node => sortNodes(node.children));
+  };
+
+  sortNodes(root.children);
+  return root.children;
+}
+
+function collectFolderPaths(nodes: FileTreeNode[]): string[] {
+  const paths: string[] = [];
+  const walk = (items: FileTreeNode[]) => {
+    for (const item of items) {
+      if (item.children.length > 0) {
+        paths.push(item.path);
+        walk(item.children);
+      }
+    }
+  };
+  walk(nodes);
+  return paths;
 }
 
 function Scrubber({ timeline, currentIdx, onSeek }: {
@@ -71,6 +131,68 @@ function Scrubber({ timeline, currentIdx, onSeek }: {
   );
 }
 
+function FileTree({
+  nodes,
+  selectedSlug,
+  expandedFolders,
+  onToggleFolder,
+  onSelectFile,
+}: {
+  nodes: FileTreeNode[];
+  selectedSlug?: string;
+  expandedFolders: Set<string>;
+  onToggleFolder: (path: string) => void;
+  onSelectFile: (file: FileSnapshotSummary) => void;
+}) {
+  return (
+    <div className={styles.tree}>
+      {nodes.map(node => {
+        const isFolder = !node.file;
+        const isExpanded = expandedFolders.has(node.path);
+        const file = node.file;
+        return (
+          <div key={node.path} className={styles.treeNode}>
+            {isFolder ? (
+              <>
+                <button
+                  type="button"
+                  className={styles.folderRow}
+                  onClick={() => onToggleFolder(node.path)}
+                >
+                  <span className={styles.folderChevron}>{isExpanded ? '▾' : '▸'}</span>
+                  <span className={styles.folderName}>{node.name}</span>
+                </button>
+                {isExpanded && node.children.length > 0 && (
+                  <div className={styles.folderChildren}>
+                    <FileTree
+                      nodes={node.children}
+                      selectedSlug={selectedSlug}
+                      expandedFolders={expandedFolders}
+                      onToggleFolder={onToggleFolder}
+                      onSelectFile={onSelectFile}
+                    />
+                  </div>
+                )}
+              </>
+            ) : file ? (
+              <button
+                type="button"
+                className={`${styles.fileItem} ${file.slug === selectedSlug ? styles.fileItemActive : ''}`}
+                onClick={() => onSelectFile(file)}
+              >
+                <div className={styles.fileName}>{node.name}</div>
+                <div className={styles.fileMeta}>
+                  {file.totalSteps} edit{file.totalSteps !== 1 ? 's' : ''} · {file.iterations.length} iter{file.iterations.length !== 1 ? 's' : ''}
+                </div>
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function FileSourceView({ content, fileName, activeId }: { content: string; fileName: string; activeId?: string }) {
   const lines = useMemo(() => content.split('\n'), [content]);
   const structure = useMemo(() => extractLeanStructureFromLines(lines), [lines]);
@@ -101,6 +223,8 @@ function FileSourceView({ content, fileName, activeId }: { content: string; file
 export default function DiffPlayback() {
   const { data: files } = useSnapshotFiles();
   const navigate = useNavigate();
+  const fileTree = useMemo(() => buildFileTree(files ?? []), [files]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
   const {
     selectedSlug,
     setSelectedSlug,
@@ -113,6 +237,15 @@ export default function DiffPlayback() {
     resolveInitialPosition,
   } = useDiffUrlState();
   const { activeId, jumpTo } = useDiffStructureNavigation();
+
+  useEffect(() => {
+    if (fileTree.length === 0) return;
+    const folderPaths = collectFolderPaths(fileTree);
+    setExpandedFolders(prev => {
+      if (prev.size > 0) return prev;
+      return new Set(folderPaths);
+    });
+  }, [fileTree]);
 
   useEffect(() => {
     if (!selectedSlug && files && files.length > 0) setSelectedSlug(files[0].slug);
@@ -129,6 +262,20 @@ export default function DiffPlayback() {
   const totalEntries = timeline?.length ?? 0;
   const currentEntry = timeline?.[currentIdx];
   const selectedSummary = files?.find(f => f.slug === selectedSlug);
+
+  const toggleFolder = useCallback((path: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const handleSelectFile = useCallback((file: FileSnapshotSummary) => {
+    selectFile(file.slug);
+  }, [selectFile]);
+
   const selectedFileLabel = selectedSummary?.file ?? formatSlug(selectedSlug);
   const sourceFileLabel = currentEntry?.sourceFile ?? selectedFileLabel;
   const hasSourceMismatch = !!(currentEntry?.sourceFile && currentEntry.sourceFile !== selectedFileLabel);
@@ -219,18 +366,13 @@ export default function DiffPlayback() {
     <div className={styles.page}>
       <div className={styles.sidebar}>
         <div className={styles.sidebarTitle}>Files</div>
-        {files.map((f: FileSnapshotSummary) => (
-          <div
-            key={f.slug}
-            className={`${styles.fileItem} ${f.slug === selectedSlug ? styles.fileItemActive : ''}`}
-            onClick={() => selectFile(f.slug)}
-          >
-            <div className={styles.fileName}>{f.file ?? f.slug.replace(/_/g, '/')}</div>
-            <div className={styles.fileMeta}>
-              {f.totalSteps} edit{f.totalSteps !== 1 ? 's' : ''} · {f.iterations.length} iter{f.iterations.length !== 1 ? 's' : ''}
-            </div>
-          </div>
-        ))}
+        <FileTree
+          nodes={fileTree}
+          selectedSlug={selectedSlug}
+          expandedFolders={expandedFolders}
+          onToggleFolder={toggleFolder}
+          onSelectFile={handleSelectFile}
+        />
       </div>
 
       <div className={styles.main}>

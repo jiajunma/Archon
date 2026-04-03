@@ -1,3 +1,5 @@
+import { scanLinesForSorry } from './sorryScanner';
+
 export type LeanStructureKind =
   | 'lemma'
   | 'theorem'
@@ -18,10 +20,10 @@ export interface LeanStructureMatch {
 }
 
 const DECL_RE = /^\s*(lemma|theorem|example|def|instance|class|structure|inductive|abbrev)\s+([^\s:(\[{]+)/;
-const SORRY_RE = /\bsorry\b/;
 
 export function extractLeanStructureFromLines(lines: string[]): LeanStructureMatch[] {
   const items: LeanStructureMatch[] = [];
+  const sorryByLine = scanLinesForSorry(lines);
   let sorryCount = 0;
 
   lines.forEach((line, idx) => {
@@ -37,7 +39,7 @@ export function extractLeanStructureFromLines(lines: string[]): LeanStructureMat
       });
     }
 
-    if (SORRY_RE.test(line)) {
+    if (sorryByLine.has(idx + 1)) {
       sorryCount += 1;
       items.push({
         id: `sorry-${idx + 1}-${sorryCount}`,

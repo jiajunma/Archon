@@ -1,3 +1,5 @@
+import { createSorryScannerState, scanLineForSorry } from './sorryScanner';
+
 export interface HighlightToken {
   text: string;
   cls?: string;
@@ -5,7 +7,6 @@ export interface HighlightToken {
 
 const KEYWORD_RE = /\b(import|universe|namespace|section|end|open|variable|variables|parameter|parameters|axiom|theorem|lemma|example|def|instance|class|structure|inductive|abbrev|alias|noncomputable|by|where|fun|match|with|if|then|else|let|in|have|show|from|intro|simp|simpa|rw|rfl|exact|apply|constructor|cases|induction|calc|do|termination_by|decreasing_by)\b/g;
 const DECL_KIND_RE = /\b(lemma|theorem|example|def|instance|class|structure|inductive|abbrev)\b/g;
-const SORRY_RE = /\bsorry\b/g;
 const LINE_COMMENT_RE = /(--.*$)/g;
 const BLOCK_COMMENT_RE = /\/\-[\s\S]*?\-\//g;
 
@@ -29,12 +30,18 @@ function collect(regex: RegExp, text: string, cls: string): MatchSpan[] {
 export function highlightLeanLine(text: string): HighlightToken[] {
   if (!text) return [{ text: '' }];
 
+  const sorrySpans = scanLineForSorry(text, createSorryScannerState()).map(({ column }) => ({
+    start: column - 1,
+    end: column - 1 + 'sorry'.length,
+    cls: 'sorry',
+  }));
+
   const blockCommentOnly = text.trim().startsWith('/-') || text.trim().endsWith('-/');
   const spans = [
     ...collect(BLOCK_COMMENT_RE, text, 'comment'),
     ...collect(LINE_COMMENT_RE, text, 'comment'),
     ...(blockCommentOnly ? [{ start: 0, end: text.length, cls: 'comment' }] : []),
-    ...collect(SORRY_RE, text, 'sorry'),
+    ...sorrySpans,
     ...collect(DECL_KIND_RE, text, 'decl'),
     ...collect(KEYWORD_RE, text, 'kw'),
   ].sort((a, b) => a.start - b.start || b.end - a.end);

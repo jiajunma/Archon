@@ -1,4 +1,5 @@
 import type { LeanStructureKind } from './leanStructure';
+import { createSorryScannerState, scanLineForSorry } from './sorryScanner';
 
 export interface DiffRenderableLine {
   id?: string;
@@ -16,7 +17,6 @@ export interface DiffStructureItem {
 }
 
 const DECL_RE = /^\s*(lemma|theorem|example|def|instance|class|structure|inductive|abbrev)\s+([^\s:(\[{]+)/;
-const SORRY_RE = /\bsorry\b/;
 
 export function parseDiffWithStructure(diff: string): {
   lines: DiffRenderableLine[];
@@ -29,6 +29,7 @@ export function parseDiffWithStructure(diff: string): {
   let newNum = 0;
   let hunkCount = 0;
   let sorryCount = 0;
+  const sorryScannerState = createSorryScannerState();
 
   for (const line of raw) {
     if (line.startsWith('@@')) {
@@ -72,13 +73,14 @@ export function parseDiffWithStructure(diff: string): {
 
     const lineNo = render.newNum ?? render.oldNum ?? 0;
     const decl = analyzable.match(DECL_RE);
+    const hasSorry = scanLineForSorry(analyzable, sorryScannerState).length > 0;
     if (decl) {
       const declKind = decl[1] as LeanStructureKind;
       const name = decl[2];
       const id = `${declKind}-${kind}-${lineNo}-${name}`;
       render.id = id;
       items.push({ id, kind: declKind, label: name, lineLabel: `${kind} line ${lineNo}` });
-    } else if (SORRY_RE.test(analyzable)) {
+    } else if (hasSorry) {
       sorryCount += 1;
       const id = `sorry-${kind}-${lineNo}-${sorryCount}`;
       render.id = id;
