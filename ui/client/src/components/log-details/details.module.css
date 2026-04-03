@@ -78,22 +78,18 @@
   line-height: 1.6;
 }
 
-.thinkingPara {
-  margin: 0 0 8px 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.thinkingCode {
-  margin: 4px 0 8px 0;
-  padding: 6px 8px;
-  background: var(--bg-tertiary);
-  border-radius: 3px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  overflow-x: auto;
-  white-space: pre-wrap;
-}
+.thinkingMarkdown { font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.thinkingMarkdown h2 { font-size: 14px; color: var(--text-primary); margin: 8px 0 4px; }
+.thinkingMarkdown h3 { font-size: 13px; color: var(--text-primary); margin: 6px 0 3px; }
+.thinkingMarkdown h4 { font-size: 12px; color: var(--text-primary); margin: 4px 0 2px; }
+.thinkingMarkdown strong { color: var(--text-primary); }
+.thinkingMarkdown code { background: var(--bg-tertiary); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+.thinkingMarkdown ul { padding-left: 18px; margin: 4px 0; }
+.thinkingMarkdown li { margin: 2px 0; }
+.thinkingMarkdown table { border-collapse: collapse; margin: 6px 0; font-size: 12px; width: auto; }
+.thinkingMarkdown th, .thinkingMarkdown td { border: 1px solid var(--border); padding: 3px 8px; text-align: left; }
+.thinkingMarkdown th { background: var(--bg-tertiary); font-weight: 600; }
+.thinkingMarkdown pre { background: var(--bg-tertiary); padding: 8px; border-radius: 4px; overflow-x: auto; font-size: 12px; margin: 4px 0; }
 
 /* -- Snapshot detail -- */
 .snapshotBody {

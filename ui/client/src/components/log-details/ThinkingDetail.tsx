@@ -1,9 +1,7 @@
 /**
- * ThinkingDetail — renders thinking/text content with paragraph structure
- *
- * Preserves whitespace but adds visual paragraph breaks.
- * Highlights code-like blocks (indented lines).
+ * ThinkingDetail — renders thinking/text content as lightweight markdown.
  */
+import MarkdownBlock from '../MarkdownBlock';
 import styles from './details.module.css';
 
 interface Props {
@@ -12,9 +10,6 @@ interface Props {
 }
 
 export default function ThinkingDetail({ content, event }: Props) {
-  // Split into paragraphs by double newline
-  const paragraphs = content.split(/\n{2,}/);
-
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -23,14 +18,7 @@ export default function ThinkingDetail({ content, event }: Props) {
         <span className={styles.meta}>{content.length} chars</span>
       </div>
       <div className={styles.thinkingBlock}>
-        {paragraphs.map((para, i) => {
-          const isCode = para.split('\n').every(l => l.startsWith('  ') || l.startsWith('\t') || l.trim() === '');
-          return isCode ? (
-            <pre key={i} className={styles.thinkingCode}>{para}</pre>
-          ) : (
-            <p key={i} className={styles.thinkingPara}>{para}</p>
-          );
-        })}
+        <MarkdownBlock content={content} className={styles.thinkingMarkdown} />
       </div>
     </div>
   );

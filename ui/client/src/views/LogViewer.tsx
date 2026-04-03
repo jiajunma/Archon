@@ -6,6 +6,7 @@ import { useLogStream } from '../hooks/useLogStream';
 import type { LogEntry, LogGroup } from '../types';
 import { fmtDuration } from '../utils/format';
 import LogEntryLine from '../components/LogEntryLine';
+import MarkdownBlock from '../components/MarkdownBlock';
 import styles from './LogViewer.module.css';
 
 // --- Sidebar components ---
@@ -38,10 +39,11 @@ function ProverStatusBar({ provers }: { provers?: Record<string, { file: string;
   );
 }
 
-function IterGroup({ group, selectedFile, onSelect }: {
+function IterGroup({ group, selectedFile, onSelect, isLatest }: {
   group: LogGroup;
   selectedFile: string;
   onSelect: (path: string) => void;
+  isLatest: boolean;
 }) {
   const hasSelected = group.files.some(f => f.path === selectedFile);
   const [expanded, setExpanded] = useState(hasSelected);
@@ -50,9 +52,10 @@ function IterGroup({ group, selectedFile, onSelect }: {
   useEffect(() => { if (hasSelected) setExpanded(true); }, [hasSelected]);
 
   const isComplete = !!meta?.completedAt;
+  const canShowRunning = isLatest && !isComplete;
 
-  // Derive current active phase from status fields
-  const activePhase = !isComplete && meta
+  // Only the latest iteration may present a running/live state.
+  const activePhase = canShowRunning && meta
     ? (meta.review?.status === 'running' ? 'review'
       : meta.prover?.status === 'running' ? 'prover'
       : meta.plan?.status === 'running' ? 'plan'
@@ -68,18 +71,18 @@ function IterGroup({ group, selectedFile, onSelect }: {
         </span>
         {meta?.mode === 'parallel' && <span className={styles.groupMode}>∥</span>}
         {isComplete && <span className={styles.groupDone}>✓</span>}
-        {!isComplete && activePhase && <span className={styles.groupStage}>{activePhase}</span>}
-        {!isComplete && (meta?.prover?.status === 'running' || meta?.plan?.status === 'running' || meta?.review?.status === 'running') && <span className={styles.groupLive}>●</span>}
+        {canShowRunning && activePhase && <span className={styles.groupStage}>{activePhase}</span>}
+        {canShowRunning && (meta?.prover?.status === 'running' || meta?.plan?.status === 'running' || meta?.review?.status === 'running') && <span className={styles.groupLive}>●</span>}
       </div>
 
       {expanded && (
         <div className={styles.groupBody}>
           {meta && (
             <div className={styles.metaBar}>
-              <PhaseTag label="plan" status={meta.plan?.status} secs={meta.plan?.durationSecs} />
-              <PhaseTag label="prover" status={meta.prover?.status} secs={meta.prover?.durationSecs} />
-              <PhaseTag label="review" status={meta.review?.status} secs={meta.review?.durationSecs} />
-              <ProverStatusBar provers={meta.provers} />
+              <PhaseTag label="plan" status={canShowRunning ? meta.plan?.status : (meta.plan?.status === 'done' ? 'done' : undefined)} secs={meta.plan?.durationSecs} />
+              <PhaseTag label="prover" status={canShowRunning ? meta.prover?.status : (meta.prover?.status === 'done' ? 'done' : undefined)} secs={meta.prover?.durationSecs} />
+              <PhaseTag label="review" status={canShowRunning ? meta.review?.status : (meta.review?.status === 'done' ? 'done' : undefined)} secs={meta.review?.durationSecs} />
+              <ProverStatusBar provers={canShowRunning ? meta.provers : Object.fromEntries(Object.entries(meta.provers || {}).map(([k, v]) => [k, { ...v, status: v.status === 'done' ? 'done' : 'stale' }]))} />
             </div>
           )}
 
@@ -219,13 +222,23 @@ export default function LogViewer() {
   const sessionEnd = useMemo(() => entries.find(e => e.event === 'session_end'), [entries]);
 
   const selectedLabel = selectedFile.replace(/\.jsonl$/, '').replace(/\//g, ' / ');
+  const latestGroupId = useMemo(() => {
+    if (!logsData?.groups?.length) return '';
+    return logsData.groups.reduce((latest, group) => {
+      const latestIter = latest.meta?.iteration ?? Number.NEGATIVE_INFINITY;
+      const groupIter = group.meta?.iteration ?? Number.NEGATIVE_INFINITY;
+      if (groupIter > latestIter) return group;
+      if (groupIter === latestIter && group.id > latest.id) return group;
+      return latest;
+    }).id;
+  }, [logsData]);
 
   return (
     <div className={styles.root}>
       {/* Sidebar */}
       <div className={styles.sidebar}>
         {logsData?.groups.slice().reverse().map(g => (
-          <IterGroup key={g.id} group={g} selectedFile={selectedFile} onSelect={setSelectedFile} />
+          <IterGroup key={g.id} group={g} selectedFile={selectedFile} onSelect={setSelectedFile} isLatest={g.id === latestGroupId} />
         ))}
 
         {logsData?.flat && logsData.flat.length > 0 && (
@@ -286,7 +299,7 @@ export default function LogViewer() {
           {sessionEnd?.summary && (
             <div className={styles.summaryBlock}>
               <span className={styles.summaryLabel}>Summary</span>
-              <span className={styles.summaryText}>{sessionEnd.summary}</span>
+              <MarkdownBlock content={sessionEnd.summary} className={styles.summaryText} />
             </div>
           )}
 
