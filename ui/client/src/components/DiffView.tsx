@@ -10,6 +10,7 @@ import { useMemo } from 'react';
 import styles from './DiffView.module.css';
 import LeanCodeLine from './LeanCodeLine';
 import { parseDiffWithStructure } from '../utils/diffStructure';
+import { highlightLeanLines } from '../utils/leanHighlight';
 
 interface DiffViewProps {
   diff: string;
@@ -22,6 +23,10 @@ interface DiffViewProps {
 
 export default function DiffView({ diff, fromFile, toFile, addedLines, removedLines, activeId }: DiffViewProps) {
   const { lines } = useMemo(() => parseDiffWithStructure(diff), [diff]);
+  const highlightedLines = useMemo(
+    () => highlightLeanLines(lines.map(line => line.type === 'hunk' ? '' : line.content)),
+    [lines],
+  );
 
   if (!diff || lines.length === 0) {
     return (
@@ -70,7 +75,7 @@ export default function DiffView({ diff, fromFile, toFile, addedLines, removedLi
                 <tr key={i} id={line.id} className={`${styles.diffLine} ${rowClass} ${activeClass}`}>
                   <td className={styles.lineNum}>{line.type !== 'add' ? line.oldNum : ''}</td>
                   <td className={styles.lineNum}>{line.type !== 'remove' ? line.newNum : ''}</td>
-                  <td className={styles.lineContent}><LeanCodeLine text={line.content} /></td>
+                  <td className={styles.lineContent}><LeanCodeLine text={line.content} tokens={highlightedLines[i]} /></td>
                 </tr>
               );
             })}

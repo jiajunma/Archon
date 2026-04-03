@@ -20,6 +20,7 @@ import DiffStructurePanel from '../components/DiffStructurePanel';
 import LeanCodeLine from '../components/LeanCodeLine';
 import { parseDiffWithStructure } from '../utils/diffStructure';
 import { extractLeanStructureFromLines } from '../utils/leanStructure';
+import { highlightLeanLines } from '../utils/leanHighlight';
 import styles from './DiffPlayback.module.css';
 import type { FileSnapshotSummary } from '../types';
 
@@ -195,6 +196,7 @@ function FileTree({
 
 function FileSourceView({ content, fileName, activeId }: { content: string; fileName: string; activeId?: string }) {
   const lines = useMemo(() => content.split('\n'), [content]);
+  const highlightedLines = useMemo(() => highlightLeanLines(lines), [lines]);
   const structure = useMemo(() => extractLeanStructureFromLines(lines), [lines]);
   const idByLine = useMemo(() => new Map(structure.map(item => [item.line, item.id])), [structure]);
 
@@ -209,7 +211,7 @@ function FileSourceView({ content, fileName, activeId }: { content: string; file
               return (
                 <tr key={i} id={id} className={activeId && id === activeId ? styles.fileLineActive : ''}>
                   <td className={styles.fileLineNum}>{i + 1}</td>
-                  <td className={styles.fileLineContent}><LeanCodeLine text={line} /></td>
+                  <td className={styles.fileLineContent}><LeanCodeLine text={line} tokens={highlightedLines[i]} /></td>
                 </tr>
               );
             })}
