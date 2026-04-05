@@ -125,6 +125,20 @@ const ROLE_COLORS: Record<string, string> = {
   review: 'var(--orange)',
 };
 
+const FILTER_OPTIONS = [
+  { value: 'shell', label: 'shell' },
+  { value: 'thinking', label: 'thinking' },
+  { value: 'tool_call', label: 'tool call' },
+  { value: 'tool_result', label: 'tool result' },
+  { value: 'text', label: 'text' },
+  { value: 'code_snapshot', label: 'snapshot' },
+  { value: 'session_end', label: 'session end' },
+] as const;
+
+type FilterEvent = typeof FILTER_OPTIONS[number]['value'];
+
+const DEFAULT_FILTERS: FilterEvent[] = FILTER_OPTIONS.map(option => option.value);
+
 // --- Run summary bar (from session_end entry) ---
 function RunSummaryBar({ entries }: { entries: LogEntry[] }) {
   const sessionEnd = entries.find(e => e.event === 'session_end');
@@ -145,7 +159,7 @@ function RunSummaryBar({ entries }: { entries: LogEntry[] }) {
 
 export default function LogViewer() {
   const [selectedFile, setSelectedFile] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [selectedFilters, setSelectedFilters] = useState<FilterEvent[]>(DEFAULT_FILTERS);
   const navigate = useNavigate();
   const highlightRef = useRef<HTMLDivElement>(null);
 
@@ -158,6 +172,21 @@ export default function LogViewer() {
     if (!backTarget) return;
     navigate(`${backTarget.pathname}${backTarget.search || ''}`);
   };
+
+  const toggleFilter = (event: FilterEvent) => {
+    setSelectedFilters(current => (
+      current.includes(event)
+        ? current.filter(value => value !== event)
+        : [...current, event]
+    ));
+  };
+
+  const resetFilters = () => {
+    setSelectedFilters(DEFAULT_FILTERS);
+  };
+
+  const allFiltersSelected = selectedFilters.length === DEFAULT_FILTERS.length;
+  const selectedFilterSet = useMemo(() => new Set<FilterEvent>(selectedFilters), [selectedFilters]);
 
   // Consume deep-link once on first load
   useEffect(() => {
@@ -214,12 +243,14 @@ export default function LogViewer() {
 
   // Filtered entries
   const filtered = useMemo(() => {
-    if (filter === 'all') return entries;
-    return entries.filter(e => e.event === filter);
-  }, [entries, filter]);
+    return entries.filter(e => selectedFilterSet.has(e.event as FilterEvent));
+  }, [entries, selectedFilterSet]);
 
-  // Summary from session_end (shown at top)
+  const visibleEntries = useMemo(() => filtered.filter(e => e.event !== 'session_end'), [filtered]);
+
+  // Summary from session_end (shown at top when selected)
   const sessionEnd = useMemo(() => entries.find(e => e.event === 'session_end'), [entries]);
+  const showSessionSummary = !!sessionEnd && selectedFilterSet.has('session_end');
 
   const selectedLabel = selectedFile.replace(/\.jsonl$/, '').replace(/\//g, ' / ');
   const latestGroupId = useMemo(() => {
@@ -279,24 +310,39 @@ export default function LogViewer() {
             </span>
           )}
           <span className={styles.selectedLabel}>{selectedLabel || 'Select a log'}</span>
-          <select value={filter} onChange={e => setFilter(e.target.value)}>
-            <option value="all">All</option>
-            <option value="shell">shell</option>
-            <option value="thinking">thinking</option>
-            <option value="tool_call">tool_call</option>
-            <option value="tool_result">tool_result</option>
-            <option value="text">text</option>
-            <option value="session_end">session_end</option>
-          </select>
+          <div className={styles.filterBar} aria-label="Event type filters">
+            <span className={styles.filterLabel}>Show</span>
+            <div className={styles.filterChips}>
+              {FILTER_OPTIONS.map(option => {
+                const active = selectedFilterSet.has(option.value);
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`${styles.filterChip} ${active ? styles.filterChipActive : ''}`}
+                    onClick={() => toggleFilter(option.value)}
+                    aria-pressed={active}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {!allFiltersSelected && (
+              <button type="button" className={styles.resetFiltersBtn} onClick={resetFilters}>
+                Reset
+              </button>
+            )}
+          </div>
           {streaming && <span className={styles.live}>● live</span>}
           <span className={styles.count}>{filtered.length} entries</span>
         </div>
 
-        <RunSummaryBar entries={entries} />
+        {showSessionSummary && <RunSummaryBar entries={entries} />}
 
         <div className={styles.container}>
           {/* Summary block at top */}
-          {sessionEnd?.summary && (
+          {showSessionSummary && sessionEnd?.summary && (
             <div className={styles.summaryBlock}>
               <span className={styles.summaryLabel}>Summary</span>
               <MarkdownBlock content={sessionEnd.summary} className={styles.summaryText} />
@@ -306,7 +352,7 @@ export default function LogViewer() {
           {/* All entries, newest first */}
           {(() => {
             let highlightAttached = false;
-            return filtered.filter(e => e.event !== 'session_end').slice().reverse().map((e, i) => {
+            return visibleEntries.slice().reverse().map((e, i) => {
               const isHighlighted = !!(closestHighlightTs && e.ts === closestHighlightTs);
               const attachRef = isHighlighted && !highlightAttached;
               if (attachRef) highlightAttached = true;
@@ -319,6 +365,10 @@ export default function LogViewer() {
               );
             });
           })()}
+
+          {selectedFile && filtered.length === 0 && (
+            <div className={styles.emptyContent}>No entries match the current filters.</div>
+          )}
 
           {entries.length === 0 && selectedFile && (
             <div className={styles.emptyContent}>No entries in this log file yet.</div>
