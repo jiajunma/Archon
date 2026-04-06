@@ -27,6 +27,7 @@
 .groupMode { color: var(--purple); font-size: 10px; font-weight: 700; }
 .groupDone { color: var(--green); font-size: 10px; }
 .groupLive { color: var(--blue); font-size: 10px; animation: pulse 1.5s infinite; }
+.groupElapsed { color: var(--text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .groupBody { padding-left: 8px; }

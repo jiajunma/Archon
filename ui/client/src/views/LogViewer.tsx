@@ -53,6 +53,10 @@ function IterGroup({ group, selectedFile, onSelect, isLatest }: {
 
   const isComplete = !!meta?.completedAt;
   const canShowRunning = isLatest && !isComplete;
+  const runningElapsed = canShowRunning
+    && (meta?.prover?.status === 'running' || meta?.plan?.status === 'running' || meta?.review?.status === 'running')
+    ? fmtElapsedMinutes(meta?.startedAt, nowMs)
+    : '';
 
   // Only the latest iteration may present a running/live state.
   const activePhase = canShowRunning && meta
@@ -188,6 +192,11 @@ export default function LogViewer() {
   const allFiltersSelected = selectedFilters.length === DEFAULT_FILTERS.length;
   const selectedFilterSet = useMemo(() => new Set<FilterEvent>(selectedFilters), [selectedFilters]);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowMs(Date.now()), 30000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   // Consume deep-link once on first load
   useEffect(() => {
     if (!selectedFile && initialSelectedFile) {
@@ -269,7 +278,14 @@ export default function LogViewer() {
       {/* Sidebar */}
       <div className={styles.sidebar}>
         {logsData?.groups.slice().reverse().map(g => (
-          <IterGroup key={g.id} group={g} selectedFile={selectedFile} onSelect={setSelectedFile} isLatest={g.id === latestGroupId} />
+          <IterGroup
+            key={g.id}
+            group={g}
+            selectedFile={selectedFile}
+            onSelect={setSelectedFile}
+            isLatest={g.id === latestGroupId}
+            nowMs={nowMs}
+          />
         ))}
 
         {logsData?.flat && logsData.flat.length > 0 && (

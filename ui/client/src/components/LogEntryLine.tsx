@@ -99,7 +99,14 @@ export default function LogEntryLine({ entry }: Props) {
         className={`${styles.text} ${hasDetail ? styles.expandable : ''}`}
         onClick={hasDetail ? () => setExpanded(!expanded) : undefined}
       >
-        {headline}
+        {entry.event === 'tool_call' && toolLabel ? (
+          <>
+            <span className={styles.toolName}>{toolLabel}</span>
+            {toolRest ? ` ${toolRest}` : ''}
+          </>
+        ) : (
+          headline
+        )}
         {hasDetail && <span className={styles.expandHint}>{expanded ? ' ▾' : ' ▸'}</span>}
       </span>
       {expanded && <DetailRenderer entry={entry} />}
