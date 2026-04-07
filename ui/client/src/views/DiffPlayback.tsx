@@ -13,7 +13,7 @@
 import { useEffect, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSnapshotFiles, useFileTimeline, useSnapshotFileContent } from '../hooks/useSnapshots';
-import { useDiffUrlState } from '../hooks/useDiffUrlState';
+import { useDiffUrlState, type DiffCompareMode } from '../hooks/useDiffUrlState';
 import { useDiffStructureNavigation } from '../hooks/useDiffStructureNavigation';
 import DiffView from '../components/DiffView';
 import DiffStructurePanel from '../components/DiffStructurePanel';
@@ -21,11 +21,17 @@ import LeanCodeLine from '../components/LeanCodeLine';
 import { parseDiffWithStructure } from '../utils/diffStructure';
 import { extractLeanStructureFromLines } from '../utils/leanStructure';
 import { highlightLeanLines } from '../utils/leanHighlight';
+import { createUnifiedDiff } from '../utils/unifiedDiff';
 import styles from './DiffPlayback.module.css';
 import type { FileSnapshotSummary } from '../types';
 
 function formatSlug(slug?: string) {
   return slug ? slug.replace(/_/g, '/') : '';
+}
+
+function formatCompareLabel(entry?: { iteration: string; step: number }) {
+  if (!entry) return '';
+  return entry.step === 0 ? `${entry.iteration} · baseline` : `${entry.iteration} · step-${String(entry.step).padStart(3, '0')}`;
 }
 
 type FileTreeNode = {
@@ -88,9 +94,11 @@ function collectFolderPaths(nodes: FileTreeNode[]): string[] {
   return paths;
 }
 
-function Scrubber({ timeline, currentIdx, onSeek }: {
+function Scrubber({ timeline, currentIdx, compareIdx, compareLabel, onSeek }: {
   timeline: { iteration: string; step: number }[];
   currentIdx: number;
+  compareIdx?: number;
+  compareLabel?: string;
   onSeek: (idx: number) => void;
 }) {
   const total = timeline.length;
@@ -108,6 +116,7 @@ function Scrubber({ timeline, currentIdx, onSeek }: {
   };
 
   const pct = (currentIdx / (total - 1)) * 100;
+  const comparePct = compareIdx != null ? (compareIdx / (total - 1)) * 100 : null;
 
   return (
     <div className={styles.scrubber}>
@@ -126,6 +135,13 @@ function Scrubber({ timeline, currentIdx, onSeek }: {
             />
           ))}
         </div>
+        {comparePct != null && compareIdx !== currentIdx && (
+          <div
+            className={styles.scrubberCompareHandle}
+            style={{ left: `${comparePct}%` }}
+            title={compareLabel || 'Compare target'}
+          />
+        )}
         <div className={styles.scrubberHandle} style={{ left: `${pct}%` }} />
       </div>
     </div>
@@ -234,6 +250,12 @@ export default function DiffPlayback() {
     setCurrentIdx,
     viewMode,
     setViewMode,
+    compareMode,
+    setCompareMode,
+    customCompareIter,
+    setCustomCompareIter,
+    customCompareStep,
+    setCustomCompareStep,
     selectFile,
     syncUrl,
     resolveInitialPosition,
@@ -264,6 +286,32 @@ export default function DiffPlayback() {
   const totalEntries = timeline?.length ?? 0;
   const currentEntry = timeline?.[currentIdx];
   const selectedSummary = files?.find(f => f.slug === selectedSlug);
+  const baselineEntry = timeline?.find(entry => entry.step === 0) ?? timeline?.[0];
+
+  const customOptions = useMemo(() => (timeline ?? []).filter(entry => {
+    if (!currentEntry) return false;
+    return !(entry.iteration === currentEntry.iteration && entry.step === currentEntry.step);
+  }), [timeline, currentEntry]);
+
+  const customCompareEntry = useMemo(() => {
+    if (!timeline || !customCompareIter || !customCompareStep) return undefined;
+    const step = parseInt(customCompareStep, 10);
+    if (Number.isNaN(step)) return undefined;
+    return timeline.find(entry => entry.iteration === customCompareIter && entry.step === step);
+  }, [timeline, customCompareIter, customCompareStep]);
+
+  const compareEntry = useMemo(() => {
+    if (!timeline || !currentEntry) return undefined;
+    if (compareMode === 'baseline') return baselineEntry;
+    if (compareMode === 'custom') return customCompareEntry;
+    return currentIdx > 0 ? timeline[currentIdx - 1] : undefined;
+  }, [timeline, currentEntry, compareMode, baselineEntry, customCompareEntry, currentIdx]);
+
+  const compareIdx = useMemo(() => {
+    if (!timeline || !compareEntry) return undefined;
+    const idx = timeline.findIndex(entry => entry.iteration === compareEntry.iteration && entry.step === compareEntry.step);
+    return idx >= 0 ? idx : undefined;
+  }, [timeline, compareEntry]);
 
   const toggleFolder = useCallback((path: string) => {
     setExpandedFolders(prev => {
@@ -278,17 +326,48 @@ export default function DiffPlayback() {
     selectFile(file.slug);
   }, [selectFile]);
 
+  useEffect(() => {
+    if (compareMode !== 'custom') return;
+    if (customCompareEntry) return;
+    const fallback = customOptions[customOptions.length - 1];
+    if (fallback) {
+      setCustomCompareIter(fallback.iteration);
+      setCustomCompareStep(String(fallback.step));
+      return;
+    }
+    setCompareMode('previous');
+    setCustomCompareIter('');
+    setCustomCompareStep('');
+  }, [compareMode, customCompareEntry, customOptions, setCompareMode, setCustomCompareIter, setCustomCompareStep]);
+
+  const handleCompareModeChange = useCallback((mode: DiffCompareMode) => {
+    setCompareMode(mode);
+    if (mode === 'custom' && !customCompareEntry) {
+      const fallback = customOptions[customOptions.length - 1];
+      if (fallback) {
+        setCustomCompareIter(fallback.iteration);
+        setCustomCompareStep(String(fallback.step));
+      }
+    }
+  }, [customCompareEntry, customOptions, setCompareMode, setCustomCompareIter, setCustomCompareStep]);
+
   const selectedFileLabel = selectedSummary?.file ?? formatSlug(selectedSlug);
   const sourceFileLabel = currentEntry?.sourceFile ?? selectedFileLabel;
   const hasSourceMismatch = !!(currentEntry?.sourceFile && currentEntry.sourceFile !== selectedFileLabel);
   const hintText = currentEntry?.step === 0
     ? 'Diffs is a snapshot replay for this file view. Use View log context to inspect the related run history.'
-    : 'Diffs is a snapshot replay for this file view. Use View log context to inspect the log history around this step.';
+    : compareMode === 'previous'
+      ? 'Diffs is a snapshot replay for this file view. Use View log context to inspect the log history around this step.'
+      : `Diffs is comparing the current snapshot against ${compareMode === 'baseline' ? 'baseline' : 'a custom snapshot'} from this file timeline.`;
 
   useEffect(() => {
     if (!selectedSlug || !currentEntry) return;
-    syncUrl(selectedSlug, currentEntry, viewMode);
-  }, [selectedSlug, currentEntry, viewMode, syncUrl]);
+    syncUrl(selectedSlug, currentEntry, viewMode, {
+      mode: compareMode,
+      iteration: compareMode === 'custom' ? customCompareIter : undefined,
+      step: compareMode === 'custom' ? customCompareStep : undefined,
+    });
+  }, [selectedSlug, currentEntry, viewMode, compareMode, customCompareIter, customCompareStep, syncUrl]);
 
   const { data: fileContent } = useSnapshotFileContent(
     selectedSlug,
@@ -296,9 +375,30 @@ export default function DiffPlayback() {
     currentEntry?.file ?? '',
   );
 
+  const { data: compareFileContent } = useSnapshotFileContent(
+    selectedSlug,
+    compareEntry?.iteration ?? '',
+    compareEntry?.file ?? '',
+  );
+
+  const displayDiff = useMemo(() => {
+    if (!currentEntry) return { diff: '', addedLines: 0, removedLines: 0 };
+    if (compareMode === 'previous') {
+      return {
+        diff: currentEntry.diff || '',
+        addedLines: currentEntry.addedLines || 0,
+        removedLines: currentEntry.removedLines || 0,
+      };
+    }
+    if (!compareEntry || !fileContent?.content || !compareFileContent?.content) {
+      return { diff: '', addedLines: 0, removedLines: 0 };
+    }
+    return createUnifiedDiff(compareEntry.file, currentEntry.file, compareFileContent.content, fileContent.content);
+  }, [currentEntry, compareMode, compareEntry, fileContent?.content, compareFileContent?.content]);
+
   const diffStructure = useMemo(
-    () => currentEntry?.diff ? parseDiffWithStructure(currentEntry.diff) : { lines: [], items: [] },
-    [currentEntry?.diff],
+    () => displayDiff.diff ? parseDiffWithStructure(displayDiff.diff) : { lines: [], items: [] },
+    [displayDiff.diff],
   );
 
   const fileStructureItems = useMemo(() => {
@@ -386,6 +486,36 @@ export default function DiffPlayback() {
               <button className={styles.btn} onClick={goNext} disabled={currentIdx >= totalEntries - 1}>▶</button>
             </div>
             {currentEntry && <span className={styles.iterLabel}>{currentEntry.iteration} · {stepLabel}</span>}
+            <div className={styles.compareControls}>
+              <label className={styles.compareLabel}>
+                <span>Compare to</span>
+                <select className={styles.compareSelect} value={compareMode} onChange={e => handleCompareModeChange(e.target.value as DiffCompareMode)}>
+                  <option value="previous">Previous</option>
+                  <option value="baseline">Baseline</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+              {compareMode === 'custom' && customOptions.length > 0 && (
+                <label className={styles.compareLabel}>
+                  <span>Snapshot</span>
+                  <select
+                    className={styles.compareSelectWide}
+                    value={`${customCompareIter}::${customCompareStep}`}
+                    onChange={e => {
+                      const [iter, step] = e.target.value.split('::');
+                      setCustomCompareIter(iter);
+                      setCustomCompareStep(step);
+                    }}
+                  >
+                    {customOptions.map(entry => (
+                      <option key={`${entry.iteration}-${entry.step}`} value={`${entry.iteration}::${entry.step}`}>
+                        {formatCompareLabel(entry)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
             <div className={styles.viewToggle}>
               <button className={`${styles.viewBtn} ${viewMode === 'diff' ? styles.viewBtnActive : ''}`} onClick={() => setViewMode('diff')}>Diff</button>
               <button className={`${styles.viewBtn} ${viewMode === 'file' ? styles.viewBtnActive : ''}`} onClick={() => setViewMode('file')}>File</button>
@@ -410,7 +540,13 @@ export default function DiffPlayback() {
         )}
 
         {timeline && totalEntries > 1 && (
-          <Scrubber timeline={timeline} currentIdx={currentIdx} onSeek={setCurrentIdx} />
+          <Scrubber
+            timeline={timeline}
+            currentIdx={currentIdx}
+            compareIdx={compareIdx}
+            compareLabel={compareEntry ? formatCompareLabel(compareEntry) : undefined}
+            onSeek={setCurrentIdx}
+          />
         )}
 
         <div className={styles.content}>
@@ -422,13 +558,15 @@ export default function DiffPlayback() {
               <p>Select a file with edit history</p>
             </div>
           ) : viewMode === 'diff' ? (
-            currentEntry?.diff ? (
+            displayDiff.diff ? (
               <DiffView
-                diff={currentEntry.diff}
-                fromFile={currentIdx === 0 ? '(initial)' : timeline![currentIdx - 1]?.file}
+                diff={displayDiff.diff}
+                fromFile={compareMode === 'previous'
+                  ? (currentIdx === 0 ? '(initial)' : timeline![currentIdx - 1]?.file)
+                  : (compareEntry?.file || '(initial)')}
                 toFile={currentEntry.file}
-                addedLines={currentEntry.addedLines}
-                removedLines={currentEntry.removedLines}
+                addedLines={displayDiff.addedLines}
+                removedLines={displayDiff.removedLines}
                 activeId={activeId}
               />
             ) : (
@@ -436,7 +574,11 @@ export default function DiffPlayback() {
                 <h3>{currentEntry?.step === 0 ? 'Baseline' : 'No changes'}</h3>
                 <p>{currentEntry?.step === 0
                   ? 'This is the initial file state — switch to File view to see content'
-                  : 'This step is identical to the previous one'}</p>
+                  : compareMode === 'previous'
+                    ? 'This step is identical to the previous one'
+                    : compareMode === 'baseline'
+                      ? 'This step is identical to the baseline snapshot'
+                      : 'This step is identical to the selected custom snapshot'}</p>
               </div>
             )
           ) : (

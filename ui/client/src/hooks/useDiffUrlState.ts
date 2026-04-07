@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { TimelineEntry } from '../types';
 
 export type DiffViewMode = 'diff' | 'file';
+export type DiffCompareMode = 'previous' | 'baseline' | 'custom';
 
 /**
  * Diffs page URL state:
@@ -18,15 +19,28 @@ export function useDiffUrlState() {
     iter: searchParams.get('iter') || '',
     step: searchParams.get('step') || '',
     view: (searchParams.get('view') === 'diff' ? 'diff' : 'file') as DiffViewMode,
+    compare: (searchParams.get('compare') === 'baseline' || searchParams.get('compare') === 'custom'
+      ? searchParams.get('compare')
+      : 'previous') as DiffCompareMode,
+    compareIter: searchParams.get('compareIter') || '',
+    compareStep: searchParams.get('compareStep') || '',
   }), []);
 
   const [selectedSlug, setSelectedSlug] = useState(initial.file);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [viewMode, setViewMode] = useState<DiffViewMode>(initial.view);
+  const [compareMode, setCompareMode] = useState<DiffCompareMode>(initial.compare);
+  const [customCompareIter, setCustomCompareIter] = useState(initial.compareIter);
+  const [customCompareStep, setCustomCompareStep] = useState(initial.compareStep);
   const initialConsumedRef = useRef(false);
   const pendingLatestSelectionRef = useRef(false);
 
-  const syncUrl = useCallback((slug: string, entry?: Pick<TimelineEntry, 'iteration' | 'step'>, view?: DiffViewMode) => {
+  const syncUrl = useCallback((
+    slug: string,
+    entry?: Pick<TimelineEntry, 'iteration' | 'step'>,
+    view?: DiffViewMode,
+    compare?: { mode: DiffCompareMode; iteration?: string; step?: number | string },
+  ) => {
     const params = new URLSearchParams();
     if (slug) params.set('file', slug);
     if (entry) {
@@ -34,6 +48,13 @@ export function useDiffUrlState() {
       params.set('step', String(entry.step));
     }
     if (view) params.set('view', view);
+    if (compare) {
+      params.set('compare', compare.mode);
+      if (compare.mode === 'custom' && compare.iteration && compare.step != null) {
+        params.set('compareIter', compare.iteration);
+        params.set('compareStep', String(compare.step));
+      }
+    }
     setSearchParams(params, { replace: true });
   }, [setSearchParams]);
 
@@ -68,6 +89,12 @@ export function useDiffUrlState() {
     setCurrentIdx,
     viewMode,
     setViewMode,
+    compareMode,
+    setCompareMode,
+    customCompareIter,
+    setCustomCompareIter,
+    customCompareStep,
+    setCustomCompareStep,
     selectFile,
     syncUrl,
     resolveInitialPosition,
