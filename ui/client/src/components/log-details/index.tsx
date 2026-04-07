@@ -33,12 +33,12 @@ export default function DetailRenderer({ entry }: Props) {
 
     case 'tool_result': {
       const content = entry.content || entry.message || '';
-      return <ToolResultDetail content={content} />;
+      return <ToolResultDetail content={content} structuredJson />;
     }
 
     case 'shell': {
       const content = entry.content || entry.message || '';
-      return <ToolResultDetail content={content} />;
+      return <ToolResultDetail content={content} structuredJson={false} />;
     }
 
     case 'thinking':
