@@ -275,7 +275,7 @@ if [[ "$DEV_MODE" == true ]]; then
     info ""
 
     # Start server in background
-    (cd "$SERVER_DIR" && node --import tsx src/index.ts --project "$PROJECT_PATH" --port "$PORT") &
+    (cd "$SERVER_DIR" && exec node --import tsx src/index.ts --project "$PROJECT_PATH" --port "$PORT") &
     SERVER_PID=$!
     echo "$SERVER_PID" > "$PID_FILE"
 
@@ -283,7 +283,7 @@ if [[ "$DEV_MODE" == true ]]; then
     trap "kill $SERVER_PID 2>/dev/null; rm -f '$PID_FILE'" EXIT
     (cd "$CLIENT_DIR" && node node_modules/vite/bin/vite.js --port 5173)
 else
-    (cd "$SERVER_DIR" && node --import tsx src/index.ts --project "$PROJECT_PATH" --port "$PORT") &
+    (cd "$SERVER_DIR" && exec node --import tsx src/index.ts --project "$PROJECT_PATH" --port "$PORT") &
     SERVER_PID=$!
     echo "$SERVER_PID" > "$PID_FILE"
 
