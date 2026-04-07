@@ -39,11 +39,22 @@ function ProverStatusBar({ provers }: { provers?: Record<string, { file: string;
   );
 }
 
-function IterGroup({ group, selectedFile, onSelect, isLatest }: {
+function fmtElapsedMinutes(startedAt?: string, nowMs?: number): string {
+  if (!startedAt || nowMs == null) return '';
+  const startedMs = new Date(startedAt).getTime();
+  if (Number.isNaN(startedMs)) return '';
+  const elapsedMs = Math.max(0, nowMs - startedMs);
+  const elapsedMin = elapsedMs / 60000;
+  if (elapsedMin < 1) return '<1 min';
+  return `${Math.floor(elapsedMin)} min`;
+}
+
+function IterGroup({ group, selectedFile, onSelect, isLatest, nowMs }: {
   group: LogGroup;
   selectedFile: string;
   onSelect: (path: string) => void;
   isLatest: boolean;
+  nowMs: number;
 }) {
   const hasSelected = group.files.some(f => f.path === selectedFile);
   const [expanded, setExpanded] = useState(hasSelected);
@@ -77,6 +88,7 @@ function IterGroup({ group, selectedFile, onSelect, isLatest }: {
         {isComplete && <span className={styles.groupDone}>✓</span>}
         {canShowRunning && activePhase && <span className={styles.groupStage}>{activePhase}</span>}
         {canShowRunning && (meta?.prover?.status === 'running' || meta?.plan?.status === 'running' || meta?.review?.status === 'running') && <span className={styles.groupLive}>●</span>}
+        {runningElapsed && <span className={styles.groupElapsed}>{runningElapsed}</span>}
       </div>
 
       {expanded && (
@@ -164,6 +176,7 @@ function RunSummaryBar({ entries }: { entries: LogEntry[] }) {
 export default function LogViewer() {
   const [selectedFile, setSelectedFile] = useState('');
   const [selectedFilters, setSelectedFilters] = useState<FilterEvent[]>(DEFAULT_FILTERS);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const navigate = useNavigate();
   const highlightRef = useRef<HTMLDivElement>(null);
 

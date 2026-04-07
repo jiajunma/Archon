@@ -4,6 +4,15 @@ import { fmtTime, truncate } from '../utils/format';
 import DetailRenderer from './log-details';
 import styles from './LogEntryLine.module.css';
 
+function splitToolHeadline(headline: string): { toolLabel: string; rest: string } {
+  const match = headline.match(/^([^:\s]+:)(\s.*)?$/);
+  if (!match) return { toolLabel: '', rest: headline };
+  return {
+    toolLabel: match[1],
+    rest: (match[2] || '').trimStart(),
+  };
+}
+
 const EVENT_COLORS: Record<string, string> = {
   shell: 'var(--blue)', thinking: 'var(--text-muted)', tool_call: 'var(--purple)',
   tool_result: 'var(--orange)', text: 'var(--green)', session_end: 'var(--green)',
@@ -17,6 +26,8 @@ export default function LogEntryLine({ entry }: Props) {
 
   let headline = '';
   let hasDetail = false;
+  let toolLabel = '';
+  let toolRest = '';
 
   switch (entry.event) {
     case 'shell':
@@ -55,7 +66,8 @@ export default function LogEntryLine({ entry }: Props) {
           if (firstVal) argSummary = String(firstVal).slice(0, 120);
         }
       }
-      headline = argSummary ? `${toolName}: ${argSummary}` : toolName;
+      headline = argSummary ? `${toolName}: ${argSummary}` : `${toolName}:`;
+      ({ toolLabel, rest: toolRest } = splitToolHeadline(headline));
       hasDetail = true;
       break;
     }
