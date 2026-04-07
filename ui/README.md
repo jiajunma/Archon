@@ -12,7 +12,7 @@ bash ui/start.sh --project /path/to/your-lean-project
 bash ui/start.sh --project workspace/my-project --port 9090 --open
 ```
 
-`start.sh` handles everything: checks dependencies, installs npm packages, builds the client, and starts the server. Run it again to restart — it auto-kills the previous instance.
+`start.sh` handles everything: checks dependencies, installs npm packages, builds the client, and starts the server. Running it again for the same project restarts that project's UI instance on the same port when possible. Different projects can run concurrently, and if the requested port is already occupied by another project or process, `start.sh` automatically falls back to the next free port.
 
 ## Views
 
@@ -166,4 +166,4 @@ bash ui/start.sh --project PATH [OPTIONS]
 -h, --help        Show help
 ```
 
-Port detection works on macOS (`lsof`), Linux (`ss`), and minimal containers (`/proc/net/tcp`).
+Port detection works on macOS (`lsof`), Linux (`ss`), and minimal containers (`/proc/net/tcp`). In normal mode, instance tracking is project-scoped, so restarting one project does not kill another project's dashboard.
