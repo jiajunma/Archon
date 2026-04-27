@@ -16,6 +16,13 @@ import os
 from archon import log
 
 
+def claude_env() -> dict[str, str]:
+    """Environment for Claude Code calls that prefers subscription auth."""
+    env = os.environ.copy()
+    env.pop("ANTHROPIC_API_KEY", None)
+    return env
+
+
 # ── prompt building ───────────────────────────────────────────────────
 
 
@@ -242,6 +249,7 @@ def run_claude(
                 stdout=subprocess.PIPE,
                 stderr=stderr_file,
                 cwd=cwd,
+                env=claude_env(),
             )
             parser_proc = subprocess.Popen(
                 [sys.executable, "-u", "-c", parser_script],
@@ -254,5 +262,5 @@ def run_claude(
 
         return claude_proc.returncode == 0
     else:
-        r = subprocess.run(claude_cmd, cwd=cwd)
+        r = subprocess.run(claude_cmd, cwd=cwd, env=claude_env())
         return r.returncode == 0

@@ -25,6 +25,7 @@ from archon.runner import (
     build_plan_prompt,
     build_prover_prompt,
     build_review_prompt,
+    claude_env,
     run_claude,
 )
 from archon.state import (
@@ -205,9 +206,10 @@ def _preflight(project_path: Path, state_dir: Path, dry_run: bool) -> None:
         r = subprocess.run(
             ["claude", "-p", "reply with OK", "--no-session-persistence"],
             capture_output=True, text=True,
+            env=claude_env(),
         )
         if r.returncode != 0:
-            log.error("Claude Code cannot run. Check: claude auth, ANTHROPIC_API_KEY, network.")
+            log.error("Claude Code cannot run. Check: claude auth and network.")
             raise typer.Exit(1)
         log.success("Claude Code is authenticated and ready")
 

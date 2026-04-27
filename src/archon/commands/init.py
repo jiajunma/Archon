@@ -10,12 +10,15 @@ from pathlib import Path
 import typer
 
 from archon import log
+from archon.runner import claude_env
 
 
 # ── helpers ───────────────────────────────────────────────────────────
 
 
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    if cmd and cmd[0] == "claude" and "env" not in kwargs:
+        kwargs["env"] = claude_env()
     return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
 
@@ -233,6 +236,7 @@ def _merge_prompts_with_claude(project_path: Path, state_dir: Path, staging: Pat
         ["claude", "--dangerously-skip-permissions",
          "--permission-mode", "bypassPermissions", prompt],
         cwd=project_path,
+        env=claude_env(),
     )
 
     # Clean up staging if Claude didn't
@@ -553,6 +557,7 @@ def _step6_interactive_claude(project_path: Path, state_dir: Path, fresh: bool) 
         ["claude", "--dangerously-skip-permissions", "--permission-mode",
          "bypassPermissions", prompt],
         cwd=project_path,
+        env=claude_env(),
     )
 
     new_stage = _parse_stage(state_dir / "PROGRESS.md")

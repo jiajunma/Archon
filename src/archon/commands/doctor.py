@@ -13,6 +13,7 @@ from pathlib import Path
 import typer
 
 from archon import log
+from archon.runner import claude_env
 
 
 def _has(binary: str) -> bool:
@@ -20,6 +21,8 @@ def _has(binary: str) -> bool:
 
 
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    if cmd and cmd[0] == "claude" and "env" not in kwargs:
+        kwargs["env"] = claude_env()
     return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
 
@@ -86,7 +89,7 @@ def _check_claude_code() -> list[tuple[str, str, str]]:
         if r.returncode == 0:
             rows.append(("claude auth", "ok", "authenticated"))
         else:
-            rows.append(("claude auth", "error", "not authenticated — check API key"))
+            rows.append(("claude auth", "error", "not authenticated — check claude auth/network"))
     else:
         rows.append(("claude", "error", "not installed — run: archon setup"))
     return rows

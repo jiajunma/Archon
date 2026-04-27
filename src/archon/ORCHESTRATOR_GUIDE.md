@@ -432,7 +432,7 @@ Use Web Search to find the paper proof if needed.
 **Pattern**: `claude -p` exits but `task_results/` is empty.
 
 **Response**: Check the log file for errors. Common causes:
-- API authentication failure → check `ANTHROPIC_API_KEY` / proxy config
+- Claude Code authentication failure → check `claude auth` / proxy config
 - MCP server not running → run `/archon-lean4:doctor` to diagnose
 
 ---
